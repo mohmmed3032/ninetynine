@@ -66,19 +66,19 @@ function hsvToHex(h: number, s: number, v: number) {
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
   const m = v - c
   let r: number, g: number, b: number
-  if (h < 60)       [r,g,b] = [c,x,0]
-  else if (h < 120) [r,g,b] = [x,c,0]
-  else if (h < 180) [r,g,b] = [0,c,x]
-  else if (h < 240) [r,g,b] = [0,x,c]
-  else if (h < 300) [r,g,b] = [x,0,c]
-  else              [r,g,b] = [c,0,x]
-  return `#${[r,g,b].map(n => Math.round((n + m) * 255).toString(16).padStart(2, '0')).join('')}`
+  if (h < 60) [r, g, b] = [c, x, 0]
+  else if (h < 120) [r, g, b] = [x, c, 0]
+  else if (h < 180) [r, g, b] = [0, c, x]
+  else if (h < 240) [r, g, b] = [0, x, c]
+  else if (h < 300) [r, g, b] = [x, 0, c]
+  else[r, g, b] = [c, 0, x]
+  return `#${[r, g, b].map(n => Math.round((n + m) * 255).toString(16).padStart(2, '0')).join('')}`
 }
 
 function hexToHsv(hex: string) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex)
   if (!m) return null
-  const [r, g, b] = [0,2,4].map(i => parseInt(m[1].slice(i, i+2), 16) / 255)
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255)
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const d = max - min
@@ -486,6 +486,12 @@ export default function AdminPage() {
   const [customColorModal, setCustomColorModal] = useState<{ open: boolean }>({ open: false })
   const [customColors, setCustomColors] = useState<CustomColor[]>([])
 
+  const [deleteCatModal, setDeleteCatModal] = useState<{
+    open: boolean
+    cat: any | null
+    count: number
+  }>({ open: false, cat: null, count: 0 })
+
   const [contactInfo, setContactInfo] = useState<ContactInfo>({
     whatsapp: '218945239468',
     phone: '+218 94-5239468',
@@ -545,6 +551,34 @@ export default function AdminPage() {
     const data = await getAllCategories()
     setCategories(data)
   }, [])
+
+  async function handleDeleteCategory(cat: any) {
+    const res = await deleteCategory(cat.id, false) // check first, no cascade
+    if (res.hasProducts) {
+      setDeleteCatModal({ open: true, cat, count: res.count || 0 })
+      return
+    }
+    if (res.success) {
+      setMessage('🗑️ تم حذف الفئة')
+      loadCategories()
+    } else {
+      setMessage(`❌ ${res.error}`)
+    }
+    setTimeout(() => setMessage(''), 3000)
+  }
+
+  async function confirmDeleteCategoryCascade() {
+    if (!deleteCatModal.cat) return
+    const res = await deleteCategory(deleteCatModal.cat.id, true) // cascade
+    if (res.success) {
+      setMessage(`🗑️ تم حذف الفئة و ${res.deletedProducts} منتجات مرتبطة بها`)
+      loadCategories()
+    } else {
+      setMessage(`❌ ${res.error}`)
+    }
+    setDeleteCatModal({ open: false, cat: null, count: 0 })
+    setTimeout(() => setMessage(''), 4000)
+  }
 
   useEffect(() => {
     loadProducts()
@@ -749,7 +783,11 @@ export default function AdminPage() {
     setCustomColors(newColors)
     localStorage.setItem('showroom_custom_colors', JSON.stringify(newColors))
     // Auto-select it
-    toggleWizardArray('colors', trimmedName)
+    if (editingProduct) {
+      toggleEditArray('colors', trimmedName)
+    } else {
+      toggleWizardArray('colors', trimmedName)
+    }
     setCustomColorModal({ open: false })
   }
 
@@ -760,6 +798,30 @@ export default function AdminPage() {
     if (wizardData.colors.includes(name)) {
       toggleWizardArray('colors', name)
     }
+    if (editForm.colors.includes(name)) {
+      toggleEditArray('colors', name)
+    }
+  }
+
+  const editFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleEditImageUpload = async (files: FileList | null) => {
+    if (!files) return
+    for (const file of Array.from(files)) {
+      const formData = new FormData()
+      formData.append('image', file)
+      const result = await uploadImage(formData)
+      if (result.success && result.url) {
+        setEditForm(prev => ({ ...prev, images: [...prev.images, result.url!] }))
+      } else {
+        setMessage(`❌ ${result.error || 'فشل الرفع'}`)
+        setTimeout(() => setMessage(''), 3000)
+      }
+    }
+  }
+
+  const removeEditImage = (index: number) => {
+    setEditForm(prev => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }))
   }
 
   const handleImageUpload = async (files: FileList | null) => {
@@ -857,15 +919,15 @@ export default function AdminPage() {
   }
 
   const [editForm, setEditForm] = useState({
-    name: '', category: '', price: '', oldPrice: '', description: '',
-    images: '', colors: [] as string[], sizes: [] as string[], tags: [] as string[],
+    name: '', category: '', price: '', description: '',
+    images: [] as string[], colors: [] as string[], sizes: [] as string[], tags: [] as string[],
   })
 
   const initEditForm = (product: Product) => {
     setEditForm({
       name: product.name, category: product.category,
-      price: product.price.toString(), oldPrice: product.oldPrice?.toString() || '',
-      description: product.description, images: product.images.join(', '),
+      price: product.price.toString(),
+      description: product.description, images: [...product.images],
       colors: [...product.colors], sizes: [...product.sizes], tags: [...product.tags],
     })
   }
@@ -885,9 +947,8 @@ export default function AdminPage() {
     formData.append('name', editForm.name)
     formData.append('category', editForm.category)
     formData.append('price', editForm.price)
-    formData.append('oldPrice', editForm.oldPrice)
     formData.append('description', editForm.description)
-    formData.append('images', editForm.images)
+    formData.append('images', editForm.images.join(', '))
     formData.append('colors', editForm.colors.join(', '))
     formData.append('sizes', editForm.sizes.join(', '))
     formData.append('tags', editForm.tags.join(', '))
@@ -1304,21 +1365,12 @@ export default function AdminPage() {
                         {categories.map((c) => (<option key={c.id} value={c.name}>{c.name}</option>))}
                       </select>
                     </div>
-                    <div>
+                    <div className="md:col-span-2">
                       <label className="block text-sm font-medium text-charcoal mb-2">السعر (د.ل)</label>
                       <input
                         type="number"
                         value={editForm.price}
                         onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-charcoal mb-2">السعر القديم (د.ل) - اختياري</label>
-                      <input
-                        type="number"
-                        value={editForm.oldPrice}
-                        onChange={(e) => setEditForm({ ...editForm, oldPrice: e.target.value })}
                         className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px]"
                       />
                     </div>
@@ -1333,19 +1385,50 @@ export default function AdminPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-charcoal mb-2">روابط الصور (مفصولة بفاصلة)</label>
-                    <input
-                      value={editForm.images}
-                      onChange={(e) => setEditForm({ ...editForm, images: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px]"
-                    />
+                    <label className="block text-sm font-medium text-charcoal mb-2">صور المنتج</label>
+                    <div
+                      onClick={() => editFileInputRef.current?.click()}
+                      className="border-2 border-dashed rounded-2xl p-4 text-center cursor-pointer transition-all border-beige bg-cream hover:border-gold/40 mb-4"
+                    >
+                      <input
+                        ref={editFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleEditImageUpload(e.target.files)}
+                        className="hidden"
+                      />
+                      <Upload className="w-6 h-6 text-gold mx-auto mb-2" />
+                      <p className="text-xs text-warm-gray">اضغطي لإضافة صور جديدة</p>
+                    </div>
+                    {editForm.images.length > 0 && (
+                      <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-3">
+                        {editForm.images.map((img, index) => (
+                          <div key={index} className="relative aspect-square sm:w-24 sm:h-24 rounded-xl overflow-hidden border border-beige bg-rose-light">
+                            <Image src={img} alt={`صورة ${index + 1}`} fill className="object-cover" sizes="96px" />
+                            {index === 0 && (
+                              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-gold text-white text-[10px] font-bold rounded">رئيسية</div>
+                            )}
+                            <button
+                              onClick={() => removeEditImage(index)}
+                              className="absolute top-1 left-1 w-6 h-6 rounded-full bg-charcoal/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <ColorCheckboxGroup
-                    label={editForm.category === 'عطور' ? 'أحجام العبوة (ml)' : 'الألوان المتوفرة'}
-                    options={editForm.category === 'ملابس نسائية' ? CLOTHES_COLORS : editForm.category === 'أحذية' ? SHOES_COLORS : CLOTHES_COLORS}
-                    selected={editForm.colors}
-                    onToggle={(v) => toggleEditArray('colors', v)}
-                  />
+                  {editForm.category !== 'عطور' && (
+                    <ColorCheckboxGroup
+                      label="الألوان المتوفرة"
+                      options={editForm.category === 'ملابس نسائية' ? CLOTHES_COLORS : editForm.category === 'أحذية' ? SHOES_COLORS : CLOTHES_COLORS}
+                      selected={editForm.colors}
+                      onToggle={(v) => toggleEditArray('colors', v)}
+                      allowCustom
+                    />
+                  )}
                   <CheckboxGroup
                     label={editForm.category === 'عطور' ? 'الأحجام المتوفرة' : editForm.category === 'أحذية' ? 'المقاسات المتوفرة' : 'المقاسات المتوفرة'}
                     options={editForm.category === 'ملابس نسائية' ? CLOTHES_SIZES : editForm.category === 'أحذية' ? SHOES_SIZES : editForm.category === 'عطور' ? ['30ml', '50ml', '100ml'] : CLOTHES_SIZES}
@@ -1936,15 +2019,7 @@ export default function AdminPage() {
                             </button>
                             <button
                               onClick={async () => {
-                                if (!confirm('هل أنتِ متأكدة من حذف هذه الفئة؟')) return
-                                const res = await deleteCategory(cat.id)
-                                if (res.success) {
-                                  setMessage('🗑️ تم حذف الفئة')
-                                  loadCategories()
-                                } else {
-                                  setMessage(`❌ ${res.error}`)
-                                }
-                                setTimeout(() => setMessage(''), 3000)
+                                await handleDeleteCategory(cat)
                               }}
                               className="p-1.5 rounded-lg hover:bg-red-50 text-warm-gray hover:text-red-500 transition-colors"
                               title="حذف"
@@ -2310,6 +2385,150 @@ export default function AdminPage() {
           onAdd={addCustomColor}
           onClose={() => setCustomColorModal({ open: false })}
         />
+      )}
+
+      {/* ─── Category Modal ─── */}
+      {categoryModal.open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-charcoal/50 backdrop-blur-sm p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 md:p-6 w-full sm:max-w-lg animate-scale-in max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-charcoal mb-5">
+              {categoryModal.editingId ? 'تعديل الفئة' : 'إضافة فئة جديدة'}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-2">اسم الفئة</label>
+                <input
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="مثال: ملابس نسائية"
+                  className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px]"
+                />
+              </div>
+
+              {categoryModal.editingId && (
+                <div>
+                  <label className="block text-sm font-medium text-charcoal mb-2">الرابط (slug)</label>
+                  <input
+                    value={categoryForm.slug}
+                    onChange={(e) => setCategoryForm(prev => ({ ...prev, slug: e.target.value }))}
+                    placeholder="مثال: clothes"
+                    dir="ltr"
+                    className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px] text-left"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-charcoal mb-2">صورة الفئة</label>
+                <div
+                  onDragOver={handleCatDragOver}
+                  onDragLeave={handleCatDragLeave}
+                  onDrop={handleCatDrop}
+                  onClick={() => catFileInputRef.current?.click()}
+                  className={cn(
+                    'border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all',
+                    catDragOver ? 'border-gold bg-gold/5' : 'border-beige bg-cream hover:border-gold/40'
+                  )}
+                >
+                  <input
+                    ref={catFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleCategoryImageUpload(e.target.files)}
+                    className="hidden"
+                  />
+                  {categoryImageUpload?.url && !categoryImageUpload.uploading ? (
+                    <div className="relative w-32 h-32 mx-auto">
+                      <Image src={categoryImageUpload.url} alt="Category" fill className="object-cover rounded-xl" sizes="128px" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setCategoryImageUpload(null); setCategoryForm(prev => ({ ...prev, image: '' })) }}
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : categoryImageUpload?.uploading ? (
+                    <div className="w-full flex items-center justify-center py-4">
+                      <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-8 h-8 text-gold mx-auto mb-2" />
+                      <p className="text-sm font-medium text-charcoal mb-1">اسحبي الصورة هنا أو اضغطي للاختيار</p>
+                      <p className="text-xs text-warm-gray">JPG, PNG, WebP</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-cream border border-beige cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={categoryForm.isMain}
+                  onChange={(e) => setCategoryForm(prev => ({ ...prev, isMain: e.target.checked }))}
+                  className="w-5 h-5 rounded border-beige text-gold focus:ring-gold"
+                />
+                <span className="text-sm font-medium text-charcoal">فئة رئيسية (تظهر في القائمة)</span>
+              </label>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 mt-6">
+              <button
+                onClick={submitCategoryModal}
+                disabled={!categoryForm.name.trim()}
+                className="flex-1 py-3 bg-gold hover:bg-gold-dark disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors min-h-[48px]"
+              >
+                {categoryModal.editingId ? 'حفظ التعديلات' : 'إضافة الفئة'}
+              </button>
+              <button
+                onClick={closeCategoryModal}
+                className="flex-1 py-3 bg-beige hover:bg-sand text-charcoal rounded-xl font-semibold transition-colors min-h-[48px]"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Delete Category Cascade Confirmation ─── */}
+      {deleteCatModal.open && deleteCatModal.cat && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-charcoal/50 backdrop-blur-sm p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 md:p-6 w-full sm:max-w-md animate-scale-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-charcoal">تنبيه: حذف الفئة</h3>
+                <p className="text-sm text-warm-gray">{deleteCatModal.cat.name}</p>
+              </div>
+            </div>
+            <div className="bg-cream rounded-xl p-4 mb-5">
+              <p className="text-sm text-charcoal mb-2">
+                هناك <span className="font-bold text-red-600">{deleteCatModal.count} منتجات</span> مرتبطة بهذه الفئة.
+              </p>
+              <p className="text-sm text-warm-gray">
+                إذا واصلت، سيتم <span className="font-bold text-charcoal">حذف الفئة وحذف جميع المنتجات داخلها نهائياً</span> بما في ذلك صورها.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={confirmDeleteCategoryCascade}
+                className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold transition-colors min-h-[48px]"
+              >
+                نعم، احذف الفئة والمنتجات ({deleteCatModal.count})
+              </button>
+              <button
+                onClick={() => setDeleteCatModal({ open: false, cat: null, count: 0 })}
+                className="flex-1 py-3 bg-beige hover:bg-sand text-charcoal rounded-xl font-semibold transition-colors min-h-[48px]"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -395,7 +395,7 @@ export async function updateCategory(id: string, formData: FormData) {
   return { success: true }
 }
 
-export async function deleteCategory(id: string) {
+export async function deleteCategory(id: string, cascade: boolean = false) {
   await verifyAdmin()
 
   const { data: cat } = await supabaseAdmin
@@ -404,17 +404,54 @@ export async function deleteCategory(id: string) {
     .eq('id', id)
     .single()
 
-  if (cat?.name) {
-    const { count } = await supabaseAdmin
-      .from('products')
-      .select('*', { count: 'exact', head: true })
-      .eq('category', cat.name)
+  if (!cat?.name) {
+    return { error: 'Category not found' }
+  }
 
-    if (count && count > 0) {
-      return { error: `لا يمكن الحذف: يوجد ${count} منتجات مرتبطة بهذه الفئة. انقليها أو احذفيها أولاً.` }
+  // Check if products exist in this category
+  const { data: productsInCat } = await supabaseAdmin
+    .from('products')
+    .select('id, images')
+    .eq('category', cat.name)
+
+  const hasProducts = (productsInCat?.length || 0) > 0
+
+  if (hasProducts && !cascade) {
+    return {
+      error: `يوجد ${productsInCat!.length} منتجات في هذه الفئة. سيتم حذفها جميعاً.`,
+      hasProducts: true,
+      count: productsInCat!.length,
     }
   }
 
+  // Cascade: delete all product images from storage first
+  if (hasProducts && cascade && productsInCat) {
+    for (const product of productsInCat) {
+      if (product.images && Array.isArray(product.images)) {
+        for (const url of product.images) {
+          const filename = url.split('/').pop()
+          if (filename) {
+            await supabaseAdmin.storage
+              .from('product-images')
+              .remove([filename])
+          }
+        }
+      }
+    }
+
+    // Delete all products in the category
+    const { error: delProductsError } = await supabaseAdmin
+      .from('products')
+      .delete()
+      .eq('category', cat.name)
+
+    if (delProductsError) {
+      console.error('deleteCategory cascade products error:', delProductsError)
+      return { error: 'فشل حذف المنتجات المرتبطة' }
+    }
+  }
+
+  // Delete the category
   const { error } = await supabaseAdmin.from('categories').delete().eq('id', id)
 
   if (error) {
@@ -423,7 +460,7 @@ export async function deleteCategory(id: string) {
   }
 
   revalidateAll()
-  return { success: true }
+  return { success: true, deletedProducts: hasProducts && cascade ? productsInCat!.length : 0 }
 }
 
 // ─── CONTACT SETTINGS ───
