@@ -492,6 +492,15 @@ export default function AdminPage() {
     count: number
   }>({ open: false, cat: null, count: 0 })
 
+  const [mainCatWarning, setMainCatWarning] = useState<{
+    open: boolean
+    cat: any | null
+  }>({ open: false, cat: null })
+
+  const [countdown, setCountdown] = useState(3)
+  const [canDeleteMain, setCanDeleteMain] = useState(false)
+  const countdownRef = useRef<NodeJS.Timeout | null>(null)
+
   const [contactInfo, setContactInfo] = useState<ContactInfo>({
     whatsapp: '218945239468',
     phone: '+218 94-5239468',
@@ -553,6 +562,26 @@ export default function AdminPage() {
   }, [])
 
   async function handleDeleteCategory(cat: any) {
+    // Main categories need a warning with countdown first
+    if (cat.is_main) {
+      setMainCatWarning({ open: true, cat })
+      setCountdown(3)
+      setCanDeleteMain(false)
+      // Start countdown
+      if (countdownRef.current) clearInterval(countdownRef.current)
+      setCountdown(3)
+      let remaining = 3
+      countdownRef.current = setInterval(() => {
+        remaining -= 1
+        setCountdown(remaining)
+        if (remaining <= 0) {
+          if (countdownRef.current) clearInterval(countdownRef.current)
+          setCanDeleteMain(true)
+        }
+      }, 1000)
+      return
+    }
+
     const res = await deleteCategory(cat.id, false) // check first, no cascade
     if (res.hasProducts) {
       setDeleteCatModal({ open: true, cat, count: res.count || 0 })
@@ -578,6 +607,32 @@ export default function AdminPage() {
     }
     setDeleteCatModal({ open: false, cat: null, count: 0 })
     setTimeout(() => setMessage(''), 4000)
+  }
+
+  async function confirmMainCatWarning() {
+    if (!mainCatWarning.cat) return
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    setMainCatWarning({ open: false, cat: null })
+    // Now proceed with normal delete flow
+    const cat = mainCatWarning.cat
+    const res = await deleteCategory(cat.id, false)
+    if (res.hasProducts) {
+      setDeleteCatModal({ open: true, cat, count: res.count || 0 })
+      return
+    }
+    if (res.success) {
+      setMessage('🗑️ تم حذف الفئة')
+      loadCategories()
+    } else {
+      setMessage(`❌ ${res.error}`)
+    }
+    setTimeout(() => setMessage(''), 3000)
+  }
+
+  function cancelMainCatWarning() {
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    setMainCatWarning({ open: false, cat: null })
+    setCanDeleteMain(false)
   }
 
   useEffect(() => {
@@ -2483,6 +2538,55 @@ export default function AdminPage() {
               </button>
               <button
                 onClick={closeCategoryModal}
+                className="flex-1 py-3 bg-beige hover:bg-sand text-charcoal rounded-xl font-semibold transition-colors min-h-[48px]"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Main Category Warning ─── */}
+      {mainCatWarning.open && mainCatWarning.cat && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-charcoal/50 backdrop-blur-sm p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 md:p-6 w-full sm:max-w-md animate-scale-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-charcoal">تنبيه: فئة رئيسية</h3>
+                <p className="text-sm text-warm-gray">{mainCatWarning.cat.name}</p>
+              </div>
+            </div>
+            <div className="bg-amber-50 rounded-xl p-4 mb-5 border border-amber-100">
+              <p className="text-sm text-charcoal leading-relaxed">
+                هذه الفئة <span className="font-bold text-amber-700">رئيسية</span> وتظهر في قائمة التنقل العلوية. 
+                حذفها سيؤدي إلى إخفائها من الموقع وقد يؤثر على روابط المنتجات المرتبطة بها.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={confirmMainCatWarning}
+                disabled={!canDeleteMain}
+                className={cn(
+                  "flex-1 py-3 rounded-xl font-semibold transition-colors min-h-[48px] relative overflow-hidden",
+                  canDeleteMain
+                    ? "bg-red-500 hover:bg-red-600 text-white"
+                    : "bg-red-200 text-white cursor-not-allowed"
+                )}
+              >
+                {canDeleteMain ? (
+                  "نعم، احذف الفئة"
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    انتظري <span className="font-mono font-bold">{countdown}</span> ثوانٍ
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={cancelMainCatWarning}
                 className="flex-1 py-3 bg-beige hover:bg-sand text-charcoal rounded-xl font-semibold transition-colors min-h-[48px]"
               >
                 إلغاء
