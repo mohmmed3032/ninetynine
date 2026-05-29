@@ -66,7 +66,6 @@ function hsvToHex(h: number, s: number, v: number) {
   const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
   const m = v - c
   let r: number, g: number, b: number
-<<<<<<< HEAD
   if (h < 60)       [r,g,b] = [c,x,0]
   else if (h < 120) [r,g,b] = [x,c,0]
   else if (h < 180) [r,g,b] = [0,c,x]
@@ -74,25 +73,12 @@ function hsvToHex(h: number, s: number, v: number) {
   else if (h < 300) [r,g,b] = [x,0,c]
   else              [r,g,b] = [c,0,x]
   return `#${[r,g,b].map(n => Math.round((n + m) * 255).toString(16).padStart(2, '0')).join('')}`
-=======
-  if (h < 60) [r, g, b] = [c, x, 0]
-  else if (h < 120) [r, g, b] = [x, c, 0]
-  else if (h < 180) [r, g, b] = [0, c, x]
-  else if (h < 240) [r, g, b] = [0, x, c]
-  else if (h < 300) [r, g, b] = [x, 0, c]
-  else[r, g, b] = [c, 0, x]
-  return `#${[r, g, b].map(n => Math.round((n + m) * 255).toString(16).padStart(2, '0')).join('')}`
->>>>>>> 2d87c3a (new version)
 }
 
 function hexToHsv(hex: string) {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex)
   if (!m) return null
-<<<<<<< HEAD
   const [r, g, b] = [0,2,4].map(i => parseInt(m[1].slice(i, i+2), 16) / 255)
-=======
-  const [r, g, b] = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16) / 255)
->>>>>>> 2d87c3a (new version)
   const max = Math.max(r, g, b)
   const min = Math.min(r, g, b)
   const d = max - min
@@ -119,11 +105,6 @@ function CustomColorPickerModal({ onAdd, onClose }: { onAdd: (payload: { name: s
   const [name, setName] = useState('')
   const [nameErr, setNameErr] = useState(false)
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 2d87c3a (new version)
   const svRef = useRef<HTMLDivElement | null>(null)
   const hueRef = useRef<HTMLDivElement | null>(null)
   const drag = useRef({ sv: false, hue: false })
@@ -501,10 +482,7 @@ export default function AdminPage() {
   const [removeDiscountModal, setRemoveDiscountModal] = useState<{ open: boolean; product: Product | null }>({ open: false, product: null })
   const [newDiscountPrice, setNewDiscountPrice] = useState('')
 
-<<<<<<< HEAD
   // Custom color modal
-=======
->>>>>>> 2d87c3a (new version)
   const [customColorModal, setCustomColorModal] = useState<{ open: boolean }>({ open: false })
   const [customColors, setCustomColors] = useState<CustomColor[]>([])
 
@@ -770,10 +748,7 @@ export default function AdminPage() {
     const newColors = [...customColors, { name: trimmedName, value: hex }]
     setCustomColors(newColors)
     localStorage.setItem('showroom_custom_colors', JSON.stringify(newColors))
-<<<<<<< HEAD
     // Auto-select it
-=======
->>>>>>> 2d87c3a (new version)
     toggleWizardArray('colors', trimmedName)
     setCustomColorModal({ open: false })
   }
@@ -2335,114 +2310,6 @@ export default function AdminPage() {
           onAdd={addCustomColor}
           onClose={() => setCustomColorModal({ open: false })}
         />
-<<<<<<< HEAD
-=======
-      )}
-
-      {/* ─── Category Modal ─── */}
-      {categoryModal.open && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-charcoal/50 backdrop-blur-sm p-0 sm:p-4">
-          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl p-4 md:p-6 w-full sm:max-w-lg animate-scale-in">
-            <h3 className="text-lg font-bold text-charcoal mb-5">
-              {categoryModal.editingId ? 'تعديل الفئة' : 'إضافة فئة جديدة'}
-            </h3>
-
-            {/* Name */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-charcoal mb-2">اسم الفئة</label>
-              <input
-                value={categoryForm.name}
-                onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                placeholder="مثال: إكسسوارات"
-                className="w-full px-4 py-3 rounded-xl bg-cream border border-beige focus:border-gold focus:outline-none focus:ring-2 focus:ring-gold/10 min-h-[44px]"
-              />
-            </div>
-
-            {/* Image Upload */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-charcoal mb-2">صورة الفئة</label>
-              <div
-                onDragOver={handleCatDragOver}
-                onDragLeave={handleCatDragLeave}
-                onDrop={handleCatDrop}
-                onClick={() => !categoryImageUpload?.uploading && catFileInputRef.current?.click()}
-                className={cn(
-                  'border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all',
-                  catDragOver ? 'border-gold bg-gold/5' : 'border-beige bg-cream hover:border-gold/40'
-                )}
-              >
-                <input
-                  ref={catFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleCategoryImageUpload(e.target.files)}
-                  className="hidden"
-                />
-                {categoryImageUpload?.uploading ? (
-                  <div className="flex flex-col items-center justify-center gap-2 py-2">
-                    <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
-                    <p className="text-sm text-warm-gray">جاري الرفع...</p>
-                  </div>
-                ) : categoryImageUpload?.url ? (
-                  <div className="relative w-full aspect-video rounded-xl overflow-hidden">
-                    <Image
-                      src={categoryImageUpload.url}
-                      alt="صورة الفئة"
-                      fill
-                      className="object-cover"
-                      sizes="400px"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setCategoryImageUpload(null)
-                        setCategoryForm(prev => ({ ...prev, image: '' }))
-                      }}
-                      className="absolute top-2 left-2 w-7 h-7 rounded-full bg-charcoal/70 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="py-2">
-                    <Upload className="w-8 h-8 text-gold mx-auto mb-2" />
-                    <p className="text-sm font-medium text-charcoal">اسحبي الصورة هنا أو اضغطي للاختيار</p>
-                    <p className="text-xs text-warm-gray mt-1">JPG, PNG, WebP — الحد الأقصى 5 ميجابايت</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Main checkbox */}
-            <label className="flex items-center gap-2 mb-6 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={categoryForm.isMain}
-                onChange={(e) => setCategoryForm({ ...categoryForm, isMain: e.target.checked })}
-                className="w-4 h-4 rounded border-beige text-gold focus:ring-gold"
-              />
-              <span className="text-sm text-charcoal">عرض في الصفحة الرئيسية (فئة رئيسية)</span>
-            </label>
-
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={submitCategoryModal}
-                disabled={!categoryForm.name.trim()}
-                className="flex-1 py-3 bg-gold hover:bg-gold-dark disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors min-h-[48px]"
-              >
-                {categoryModal.editingId ? 'حفظ التعديلات' : 'إضافة الفئة'}
-              </button>
-              <button
-                onClick={closeCategoryModal}
-                className="flex-1 py-3 bg-beige hover:bg-sand text-charcoal rounded-xl font-semibold transition-colors min-h-[48px]"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
->>>>>>> 2d87c3a (new version)
       )}
     </div>
   )
